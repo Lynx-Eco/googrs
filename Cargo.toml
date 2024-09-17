@@ -1,0 +1,23 @@
+[package]
+name = "googrs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "googrs"
+path = "src/lib.rs"
+
+[[example]]
+name = "search_url"
+path = "examples/search_url.rs"
+
+[[example]]
+name = "search_full"
+path = "examples/search_full.rs"
+
+[dependencies]
+rand = "0.8.5"
+reqwest = "0.12.7"
+scraper = "0.20.0"
+serde = { version = "1.0.210", features = ["derive"] }
+tokio = { version = "1.40.0", features = ["full"] }
