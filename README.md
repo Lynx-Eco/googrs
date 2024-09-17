@@ -1,71 +1,77 @@
-# googlesearch
-googlesearch is a Python library for searching Google, easily. googlesearch uses requests and BeautifulSoup4 to scrape Google. 
+
+# googlesearch-rs
+
+A Rust library for searching Google, inspired by the Python `googlesearch` library.
+
+## Features
+
+- Search Google and retrieve results asynchronously
+- Customizable search parameters (language, region, safe search, etc.)
+- Proxy support
+- Configurable sleep intervals between requests
+- SSL verification options
 
 ## Installation
-To install, run the following command:
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+googlesearch-rs = "0.1.0"
+```
+## Examples 
+
 ```bash
-python3 -m pip install googlesearch-python
+cargo run --example search_full
+cargo run --example search_url
 ```
 
 ## Usage
-To get results for a search term, simply use the search function in googlesearch. For example, to get results for "Google" in Google, just run the following program:
-```python
-from googlesearch import search
-search("Google")
-```
 
-## Additional options
-googlesearch supports a few additional options. By default, googlesearch returns 10 results. This can be changed. To get a 100 results on Google for example, run the following program.
-```python
-from googlesearch import search
-search("Google", num_results=100)
-```
-In addition, you can change the language google searches in. For example, to get results in French run the following program:
-```python
-from googlesearch import search
-search("Google", lang="fr")
-```
-You can also specify the region ([Country Codes](https://developers.google.com/custom-search/docs/json_api_reference#countryCodes)) for your search results. For example, to get results specifically from the US run the following program:
-```python
-from googlesearch import search
-search("Google", region="us")
-```
-If you want to turn off the safe search function (this function is on by default), you can do this:
-```python
-from googlesearch import search
-search("Google", safe=None)
-```
-To extract more information, such as the description or the result URL, use an advanced search:
-```python
-from googlesearch import search
-search("Google", advanced=True)
-# Returns a list of SearchResult
-# Properties:
-# - title
-# - url
-# - description
-```
-If requesting more than 100 results, googlesearch will send multiple requests to go through the pages. To increase the time between these requests, use `sleep_interval`:
-```python
-from googlesearch import search
-search("Google", sleep_interval=5, num_results=200)
-```
+```rust
+use googlesearch_rs::search;
 
-```
-If requesting more than 10 results, but want to manage the batching yourself? 
-Use `start_num` to specify the start number of the results you want to get:
-```python
-from googlesearch import search
-search("Google", sleep_interval=5, num_results=200, start_result=10)
-```
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let results = search(
+        "Rust programming",
+        10,
+        "en",
+        None,
+        2,
+        5,
+        "active",
+        true,
+        None,
+        0
+    ).await?;
 
-If you are using a HTTP Rotating Proxy which requires you to install their CA Certificate, you can simply add `ssl_verify=False` in the `search()` method to avoid SSL Verification.
-```python
-from googlesearch import search
+    for result in results {
+        println!("URL: {}", result.url);
+        println!("Title: {}", result.title);
+        println!("Description: {}", result.description);
+        println!("---");
+    }
 
-proxy = 'http://API:@proxy.host.com:8080/'
+    Ok(())
+}
+## Parameters
 
-j = search("proxy test", num_results=100, lang="en", proxy=proxy, ssl_verify=False)
-for i in j:
-    print(i)
-```
+- `term`: The search query string
+- `num_results`: Number of results to retrieve
+- `lang`: Language code (e.g., "en" for English)
+- `proxy`: Optional proxy URL
+- `sleep_interval`: Time to wait between requests (in seconds)
+- `timeout`: Request timeout (in seconds)
+- `safe`: Safe search setting ("active" or "off")
+- `ssl_verify`: Whether to verify SSL certificates
+- `region`: Optional region code for localized results
+- `start_num`: Starting index for search results
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Disclaimer
+
+This library is for educational purposes only. Please read and respect Google's Terms of Service.
