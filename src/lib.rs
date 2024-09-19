@@ -1,15 +1,29 @@
 mod user_agents;
-
+use readablers::ReadabilityOptions;
+use reqwest::Url;
 use reqwest::Client;
 use scraper::{ Html, Selector };
 use serde::Serialize;
+use tokio::task;
 use std::time::Duration;
-
+use htmd::{ options::Options, Element, HtmlToMarkdown };
+use markup5ever::{ local_name, LocalName, Namespace };
+use std::sync::{ Arc, Mutex };
+use task::spawn_blocking;
+use readablers::Readability;
 #[derive(Debug, Serialize)]
 pub struct SearchResult {
     pub url: String,
     pub title: String,
     pub description: String,
+}
+#[derive(Debug, Serialize)]
+pub struct MarkdownResult {
+    pub url: String,
+    pub title: String,
+    pub description: String,
+    pub content: String,
+    pub links: Vec<(String, String)>, // (link text, href)
 }
 
 pub async fn search(
@@ -141,4 +155,189 @@ pub async fn search_url(
             .map(|r| r.url)
             .collect()
     )
+}
+
+pub async fn search_md(
+    term: &str,
+    num_results: usize,
+    lang: &str,
+    proxy: Option<&str>,
+    sleep_interval: u64,
+    timeout: u64,
+    safe: &str,
+    ssl_verify: bool,
+    region: Option<&str>,
+    start_num: usize,
+    remove_links: bool
+) -> Result<Vec<MarkdownResult>, Box<dyn std::error::Error>> {
+    let urls = search_url(
+        term,
+        num_results,
+        lang,
+        proxy,
+        sleep_interval,
+        timeout,
+        safe,
+        ssl_verify,
+        region,
+        start_num
+    ).await?;
+
+    let client = Client::builder()
+        .timeout(Duration::from_secs(timeout))
+        .danger_accept_invalid_certs(!ssl_verify)
+        .build()?;
+
+    let mut markdown_results = Vec::new();
+
+    for url in urls {
+        let resp = client.get(&url).send().await?;
+        let html = resp.text().await?;
+
+        let links = Arc::new(Mutex::new(Vec::new()));
+        let links_clone = Arc::clone(&links);
+
+        let converter = HtmlToMarkdown::builder()
+            .options(Options {
+                link_style: htmd::options::LinkStyle::Referenced,
+                link_reference_style: htmd::options::LinkReferenceStyle::Shortcut,
+                ..Default::default()
+            })
+            .skip_tags(vec!["script", "style", "iframe", "img", "svg"])
+            .add_handler(vec!["a"], move |el: Element| {
+                let mut link: Option<String> = None;
+                let mut title: Option<String> = None;
+
+                for attr in el.attrs.iter() {
+                    let name = &attr.name.local;
+                    if name == "href" {
+                        link = Some(attr.value.to_string());
+                    } else if name == "title" {
+                        title = Some(attr.value.to_string());
+                    }
+                }
+
+                let content = el.content.to_string();
+
+                let Some(href) = link else {
+                    return Some(content);
+                };
+
+                links_clone.lock().unwrap().push((content.clone(), href));
+
+                if remove_links {
+                    Some(content)
+                } else {
+                    None
+                }
+            })
+            .build();
+
+        let markdown = converter.convert(&html)?;
+
+        let search_result = search(
+            term,
+            1,
+            lang,
+            proxy,
+            sleep_interval,
+            timeout,
+            safe,
+            ssl_verify,
+            region,
+            0
+        ).await?
+            .pop()
+            .unwrap_or(SearchResult {
+                url: url.clone(),
+                title: String::new(),
+                description: String::new(),
+            });
+
+        let links_vec = Arc::try_unwrap(links)
+            .map(|mutex| mutex.into_inner().unwrap_or_default())
+            .unwrap_or_else(|arc|
+                arc
+                    .lock()
+                    .map(|guard| guard.clone())
+                    .unwrap_or_default()
+            );
+
+        markdown_results.push(MarkdownResult {
+            url,
+            title: search_result.title,
+            description: search_result.description,
+            content: markdown,
+            links: links_vec,
+        });
+
+        tokio::time::sleep(Duration::from_secs(sleep_interval)).await;
+    }
+
+    Ok(markdown_results)
+}
+
+pub async fn search_reader(
+    term: &str,
+    num_results: usize,
+    lang: &str,
+    proxy: Option<&str>,
+    sleep_interval: u64,
+    timeout: u64,
+    safe: &str,
+    ssl_verify: bool,
+    region: Option<&str>,
+    start_num: usize
+) -> Result<Vec<ReaderResult>, Box<dyn std::error::Error>> {
+    let urls = search_url(
+        term,
+        num_results,
+        lang,
+        proxy,
+        sleep_interval,
+        timeout,
+        safe,
+        ssl_verify,
+        region,
+        start_num
+    ).await?;
+
+    let mut reader_results = Vec::new();
+
+    for url in urls {
+        let url_clone = url.clone();
+        // Use spawn_blocking to run the synchronous scrape function
+        let client = Client::new();
+        let response = client.get(&url).send().await?;
+        let html = response.text().await?;
+
+        let options = ReadabilityOptions {
+            debug: true,
+            ..ReadabilityOptions::default()
+        };
+        let mut readability = Readability::new(&html, options);
+
+        let result = readability.parse();
+        let result = result.unwrap();
+        let reader_result = ReaderResult {
+            url: url_clone,
+            title: result.title,
+            description: result.excerpt.unwrap_or_default(),
+            content: result.content,
+        };
+
+        reader_results.push(reader_result);
+
+        tokio::time::sleep(Duration::from_secs(sleep_interval)).await;
+    }
+
+    Ok(reader_results)
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReaderResult {
+    pub url: String,
+    pub title: String,
+    pub description: String,
+    pub content: String,
 }

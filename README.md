@@ -1,4 +1,3 @@
-
 # googlesearch-rs
 
 A Rust library for searching Google, inspired by the Python `googlesearch` library.
@@ -55,6 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
 ## Parameters
 
 - `term`: The search query string
@@ -67,6 +67,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 - `ssl_verify`: Whether to verify SSL certificates
 - `region`: Optional region code for localized results
 - `start_num`: Starting index for search results
+
+## Usage
+
+To remove links from the Markdown output, use the `remove_links` option:
+
+```rust
+let
+```
 
 ## License
 

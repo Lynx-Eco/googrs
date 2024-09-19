@@ -3,6 +3,9 @@ name = "googrs"
 version = "0.1.0"
 edition = "2021"
 
+[net]
+git-fetch-with-cli = true
+
 [lib]
 name = "googrs"
 path = "src/lib.rs"
@@ -16,8 +19,14 @@ name = "search_full"
 path = "examples/search_full.rs"
 
 [dependencies]
+htmd = "0.1.6"
+markup5ever = "0.14.0"
 rand = "0.8.5"
+readable-readability = "0.4.0"
 reqwest = "0.12.7"
 scraper = "0.20.0"
 serde = { version = "1.0.210", features = ["derive"] }
 tokio = { version = "1.40.0", features = ["full"] }
+readability = "0.3.0"
+readablers = { git = "https://github.com/Lynx-Eco/readablers.git", version = "0.1.0" }
+
