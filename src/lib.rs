@@ -187,7 +187,7 @@ pub async fn search_md(
 ) -> Result<Vec<MarkdownResult>, Box<dyn std::error::Error>> {
     let search_result = search(
         term,
-        1,
+        num_results,
         lang,
         proxy,
         sleep_interval,
@@ -206,6 +206,9 @@ pub async fn search_md(
     let mut markdown_results = Vec::new();
 
     for search_result in search_result {
+        if is_blocked(&search_result.url) {
+            continue;
+        }
         let resp = client.get(&search_result.url).send().await?;
         let html = resp.text().await?;
 
@@ -216,33 +219,6 @@ pub async fn search_md(
                 ..Default::default()
             })
             .skip_tags(vec!["script", "style", "iframe", "img", "svg"])
-            // .add_handler(vec!["a"], move |el: Element| {
-            //     let mut link: Option<String> = None;
-            //     let mut title: Option<String> = None;
-
-            //     for attr in el.attrs.iter() {
-            //         let name = &attr.name.local;
-            //         if name == "href" {
-            //             link = Some(attr.value.to_string());
-            //         } else if name == "title" {
-            //             title = Some(attr.value.to_string());
-            //         }
-            //     }
-
-            //     let content = el.content.to_string();
-
-            //     let Some(href) = link else {
-            //         return Some(content);
-            //     };
-
-            //     links_clone.lock().unwrap().push((content.clone(), href));
-
-            //     if remove_links {
-            //         Some(content)
-            //     } else {
-            //         None
-            //     }
-            // })
             .build();
 
         let mut markdown = converter.convert(&html)?;
@@ -253,7 +229,6 @@ pub async fn search_md(
             description: search_result.description,
             content: markdown,
         });
-
         tokio::time::sleep(Duration::from_secs(sleep_interval)).await;
     }
 
@@ -421,4 +396,22 @@ pub fn clean_markdown(input_markdown: &str) -> String {
     // Reassemble markdown
     let reassembler = MarkdownReassembler::new();
     reassembler.reassemble(&filtered_blocks)
+}
+// List of URLs known to block scraping
+pub static SCRAPING_BLOCKLIST: &[&str] = &[
+    "reddit.com",
+    "facebook.com",
+    "twitter.com",
+    "linkedin.com",
+    "instagram.com",
+    "tiktok.com",
+    "pinterest.com",
+    "quora.com",
+    "glassdoor.com",
+    "yelp.com",
+];
+
+/// Checks if a given URL is in the scraping blocklist
+pub fn is_blocked(url: &str) -> bool {
+    SCRAPING_BLOCKLIST.iter().any(|&blocked| url.contains(blocked))
 }

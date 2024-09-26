@@ -11,7 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let results = search_md(
         "Best neighborhoods in San Francisco",
-        2,
+        3,
         "en",
         None,
         2,
