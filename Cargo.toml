@@ -33,4 +33,6 @@ lol_read = { git = "https://github.com/Lynx-Eco/lol-read.git", version = "0.1.0"
 html2text = "0.6.0"
 pulldown-cmark = "0.12.1"
 regex = "1.10.6"
+thiserror = "1.0.64"
+serde_urlencoded = "0.7.1"
 

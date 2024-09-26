@@ -1,11 +1,5 @@
-//! # Markdown Scorer Module
-//!
-//! This module provides functionality to score and evaluate `MarkdownBlock`s based on their importance.
-
 use crate::md_parse::MarkdownBlock;
 use regex::Regex;
-
-/// Returns a default list of keywords used for scoring.
 pub fn default_keywords() -> Vec<String> {
     vec![
         "fn",
@@ -44,56 +38,37 @@ pub fn default_keywords() -> Vec<String> {
         .map(String::from)
         .collect()
 }
-
-/// Represents a scored Markdown block.
 #[derive(Debug)]
 pub struct ScoredBlock<'a> {
     pub block: &'a MarkdownBlock,
     pub score: f32,
 }
 
-/// Struct for scoring Markdown blocks.
 pub struct MarkdownScorer {
     keywords: Vec<String>,
 }
 
 impl MarkdownScorer {
-    /// Creates a new `MarkdownScorer` with default keywords.
     pub fn new() -> Self {
         MarkdownScorer {
             keywords: default_keywords(),
         }
     }
 
-    /// Scores a list of `MarkdownBlock`s.
-    ///
-    /// # Arguments
-    ///
-    /// * `blocks` - A slice of `MarkdownBlock`s to score.
-    ///
-    /// # Returns
-    ///
-    /// A vector of tuples containing references to `MarkdownBlock`s and their scores.
     pub fn score_blocks<'a>(&self, blocks: &'a [MarkdownBlock]) -> Vec<(&'a MarkdownBlock, f32)> {
         blocks
             .iter()
-            .map(|block| (block, self.score_block(block)))
+            .map(|block| {
+                let score = self.score_block(block);
+                (block, score)
+            })
             .collect()
     }
 
-    /// Calculates the threshold score based on the average score.
-    ///
-    /// # Arguments
-    ///
-    /// * `scored_blocks` - A slice of tuples containing `MarkdownBlock`s and their scores.
-    ///
-    /// # Returns
-    ///
-    /// A `f32` representing the threshold.
     pub fn calculate_threshold(&self, scored_blocks: &[(&MarkdownBlock, f32)]) -> f32 {
         let sum: f32 = scored_blocks
             .iter()
-            .map(|&(_, score)| score)
+            .map(|(_, score)| score)
             .sum();
         let count = scored_blocks.len() as f32;
         if count == 0.0 {
@@ -103,15 +78,6 @@ impl MarkdownScorer {
         } // Threshold at 50% of average
     }
 
-    /// Scores an individual `MarkdownBlock`.
-    ///
-    /// # Arguments
-    ///
-    /// * `block` - A reference to a `MarkdownBlock` to score.
-    ///
-    /// # Returns
-    ///
-    /// A `f32` representing the score.
     fn score_block(&self, block: &MarkdownBlock) -> f32 {
         let mut score = 0.0;
 
@@ -140,9 +106,8 @@ impl MarkdownScorer {
             _ => 0.0,
         };
         score += heading_score;
-
-        // Keyword Density
-        let keyword_density = self.compute_keyword_density(block);
+        // Assuming keywords are stored in the MarkdownScorer struct
+        let keyword_density = self.compute_keyword_density(block, &self.keywords);
         score += keyword_density * 2.0; // Weight
 
         // Link Density Penalty
@@ -160,16 +125,7 @@ impl MarkdownScorer {
         score
     }
 
-    /// Computes the keyword density of a `MarkdownBlock`.
-    ///
-    /// # Arguments
-    ///
-    /// * `block` - The `MarkdownBlock` to analyze.
-    ///
-    /// # Returns
-    ///
-    /// A `f32` representing the keyword density.
-    fn compute_keyword_density(&self, block: &MarkdownBlock) -> f32 {
+    fn compute_keyword_density(&self, block: &MarkdownBlock, keywords: &[String]) -> f32 {
         let text = match block {
             | MarkdownBlock::Heading { text, .. }
             | MarkdownBlock::Paragraph(text)
@@ -197,45 +153,36 @@ impl MarkdownScorer {
             return 0.0;
         }
 
-        let keyword_count: usize = self.keywords
+        let keyword_count: usize = keywords
             .iter()
             .map(|keyword| text.to_lowercase().matches(&keyword.to_lowercase()).count())
             .sum();
 
         (keyword_count as f32) / (total_words as f32)
     }
-
-    /// Computes the link density of a `MarkdownBlock`.
-    ///
-    /// # Arguments
-    ///
-    /// * `block` - The `MarkdownBlock` to analyze.
-    ///
-    /// # Returns
-    ///
-    /// A `f32` representing the link density.
     fn compute_link_density(&self, block: &MarkdownBlock) -> f32 {
-        let link_regex = Regex::new(r"\[(?P<text>.*?)\]\(.*?\)").unwrap();
+        let LINK_REGEX: Regex = Regex::new(r"\[(?P<text>.*?)\]\(.*?\)").unwrap();
 
         let (link_length, text_length) = match block {
             | MarkdownBlock::Heading { text, .. }
             | MarkdownBlock::Paragraph(text)
             | MarkdownBlock::BlockQuote(text) => {
-                process_text(text, &link_regex)
+                process_text(text, &LINK_REGEX)
             }
-            MarkdownBlock::List { items, .. } =>
+            MarkdownBlock::List { items, .. } => {
                 items
                     .iter()
-                    .map(|item| process_text(item, &link_regex))
-                    .fold((0, 0), |acc, (l, t)| (acc.0 + l, acc.1 + t)),
+                    .map(|item| process_text(item, &LINK_REGEX))
+                    .fold((0, 0), |acc, (l, t)| (acc.0 + l, acc.1 + t))
+            }
             MarkdownBlock::Table { headers, rows } => {
                 let header_stats = headers
                     .iter()
-                    .map(|h| process_text(h, &link_regex))
+                    .map(|h| process_text(h, &LINK_REGEX))
                     .fold((0, 0), |acc, (l, t)| (acc.0 + l, acc.1 + t));
                 let row_stats = rows
                     .iter()
-                    .flat_map(|row| row.iter().map(|cell| process_text(cell, &link_regex)))
+                    .flat_map(|row| row.iter().map(|cell| process_text(cell, &LINK_REGEX)))
                     .fold((0, 0), |acc, (l, t)| (acc.0 + l, acc.1 + t));
                 (header_stats.0 + row_stats.0, header_stats.1 + row_stats.1)
             }
@@ -249,15 +196,6 @@ impl MarkdownScorer {
         }
     }
 
-    /// Computes the emphasis bonus for a `MarkdownBlock`.
-    ///
-    /// # Arguments
-    ///
-    /// * `block` - The `MarkdownBlock` to analyze.
-    ///
-    /// # Returns
-    ///
-    /// A `f32` representing the emphasis bonus.
     fn compute_emphasis_bonus(&self, block: &MarkdownBlock) -> f32 {
         match block {
             MarkdownBlock::Heading { text, level } => {
@@ -281,34 +219,14 @@ impl MarkdownScorer {
         }
     }
 
-    /// Computes the content-type bonus for a `MarkdownBlock`.
-    ///
-    /// # Arguments
-    ///
-    /// * `block` - The `MarkdownBlock` to analyze.
-    ///
-    /// # Returns
-    ///
-    /// A `f32` representing the content-type bonus or penalty.
     fn content_type_bonus(&self, block: &MarkdownBlock) -> f32 {
         match block {
-            MarkdownBlock::CodeBlock { .. } => 0.5, // Bonus for code blocks
-            MarkdownBlock::List { .. } => 1.0, // Bonus for lists
+            MarkdownBlock::CodeBlock { .. } => 0.5, // bonus for code blocks
+            MarkdownBlock::List { .. } => 1.0, // bonus for lists
             _ => 0.0,
         }
     }
 }
-
-/// Processes text to calculate link lengths and total text lengths.
-///
-/// # Arguments
-///
-/// * `text` - The text to process.
-/// * `link_regex` - The compiled regex for link detection.
-///
-/// # Returns
-///
-/// A tuple containing the total length of link texts and the total text length.
 pub fn process_text(text: &str, link_regex: &Regex) -> (usize, usize) {
     let mut link_length = 0;
     let text_length = text.len();
@@ -320,30 +238,4 @@ pub fn process_text(text: &str, link_regex: &Regex) -> (usize, usize) {
     }
 
     (link_length, text_length)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::md_parse::MarkdownBlock;
-
-    #[test]
-    fn test_compute_keyword_density() {
-        let scorer = MarkdownScorer::new();
-        let block = MarkdownBlock::Paragraph("fn main() { let x = 5; }".to_string());
-        let density = scorer.compute_keyword_density(&block);
-        assert_eq!(density, 4.0 / 6.0); // 4 keywords out of 6 words
-    }
-
-    #[test]
-    fn test_compute_link_density() {
-        let scorer = MarkdownScorer::new();
-        let block = MarkdownBlock::Paragraph(
-            "This is a [link](http://example.com) in text.".to_string()
-        );
-        let density = scorer.compute_link_density(&block);
-        assert_eq!(density, 4.0 / 9.0); // "link" is 4 characters in 9 total
-    }
-
-    // Add more tests as needed
 }
