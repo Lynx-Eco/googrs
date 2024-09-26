@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None,
         0
     ).await?;
-
+    println!("{:?}", reader_results.len());
     let markdown_results: Vec<ReaderResult> = reader_results
         .into_iter()
         .map(|result| {

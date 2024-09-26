@@ -1,4 +1,5 @@
 mod user_agents;
+use md_parse::MarkdownBlock;
 use readablers::ReadabilityOptions;
 use reqwest::Url;
 use reqwest::Client;
@@ -11,6 +12,21 @@ use markup5ever::{ local_name, LocalName, Namespace };
 use std::sync::{ Arc, Mutex };
 use task::spawn_blocking;
 use readablers::Readability;
+use html2text::{
+    from_read_rich,
+    render::text_renderer::RichAnnotation,
+    render::text_renderer::TaggedLine,
+};
+use std::fs::File;
+use std::io::Write;
+mod md_parse;
+mod scorer;
+mod reassembler;
+
+use md_parse::MarkdownParser;
+use scorer::MarkdownScorer;
+use reassembler::MarkdownReassembler;
+
 #[derive(Debug, Serialize)]
 pub struct SearchResult {
     pub url: String,
@@ -23,7 +39,6 @@ pub struct MarkdownResult {
     pub title: String,
     pub description: String,
     pub content: String,
-    pub links: Vec<(String, String)>, // (link text, href)
 }
 
 pub async fn search(
@@ -170,9 +185,9 @@ pub async fn search_md(
     start_num: usize,
     remove_links: bool
 ) -> Result<Vec<MarkdownResult>, Box<dyn std::error::Error>> {
-    let urls = search_url(
+    let search_result = search(
         term,
-        num_results,
+        1,
         lang,
         proxy,
         sleep_interval,
@@ -180,7 +195,7 @@ pub async fn search_md(
         safe,
         ssl_verify,
         region,
-        start_num
+        0
     ).await?;
 
     let client = Client::builder()
@@ -190,85 +205,53 @@ pub async fn search_md(
 
     let mut markdown_results = Vec::new();
 
-    for url in urls {
-        let resp = client.get(&url).send().await?;
+    for search_result in search_result {
+        let resp = client.get(&search_result.url).send().await?;
         let html = resp.text().await?;
-
-        let links = Arc::new(Mutex::new(Vec::new()));
-        let links_clone = Arc::clone(&links);
 
         let converter = HtmlToMarkdown::builder()
             .options(Options {
                 link_style: htmd::options::LinkStyle::Referenced,
-                link_reference_style: htmd::options::LinkReferenceStyle::Shortcut,
+                link_reference_style: htmd::options::LinkReferenceStyle::Collapsed,
                 ..Default::default()
             })
             .skip_tags(vec!["script", "style", "iframe", "img", "svg"])
-            .add_handler(vec!["a"], move |el: Element| {
-                let mut link: Option<String> = None;
-                let mut title: Option<String> = None;
+            // .add_handler(vec!["a"], move |el: Element| {
+            //     let mut link: Option<String> = None;
+            //     let mut title: Option<String> = None;
 
-                for attr in el.attrs.iter() {
-                    let name = &attr.name.local;
-                    if name == "href" {
-                        link = Some(attr.value.to_string());
-                    } else if name == "title" {
-                        title = Some(attr.value.to_string());
-                    }
-                }
+            //     for attr in el.attrs.iter() {
+            //         let name = &attr.name.local;
+            //         if name == "href" {
+            //             link = Some(attr.value.to_string());
+            //         } else if name == "title" {
+            //             title = Some(attr.value.to_string());
+            //         }
+            //     }
 
-                let content = el.content.to_string();
+            //     let content = el.content.to_string();
 
-                let Some(href) = link else {
-                    return Some(content);
-                };
+            //     let Some(href) = link else {
+            //         return Some(content);
+            //     };
 
-                links_clone.lock().unwrap().push((content.clone(), href));
+            //     links_clone.lock().unwrap().push((content.clone(), href));
 
-                if remove_links {
-                    Some(content)
-                } else {
-                    None
-                }
-            })
+            //     if remove_links {
+            //         Some(content)
+            //     } else {
+            //         None
+            //     }
+            // })
             .build();
 
-        let markdown = converter.convert(&html)?;
-
-        let search_result = search(
-            term,
-            1,
-            lang,
-            proxy,
-            sleep_interval,
-            timeout,
-            safe,
-            ssl_verify,
-            region,
-            0
-        ).await?
-            .pop()
-            .unwrap_or(SearchResult {
-                url: url.clone(),
-                title: String::new(),
-                description: String::new(),
-            });
-
-        let links_vec = Arc::try_unwrap(links)
-            .map(|mutex| mutex.into_inner().unwrap_or_default())
-            .unwrap_or_else(|arc|
-                arc
-                    .lock()
-                    .map(|guard| guard.clone())
-                    .unwrap_or_default()
-            );
-
+        let mut markdown = converter.convert(&html)?;
+        markdown = clean_markdown(&markdown);
         markdown_results.push(MarkdownResult {
-            url,
+            url: search_result.url,
             title: search_result.title,
             description: search_result.description,
             content: markdown,
-            links: links_vec,
         });
 
         tokio::time::sleep(Duration::from_secs(sleep_interval)).await;
@@ -340,4 +323,102 @@ pub struct ReaderResult {
     pub title: String,
     pub description: String,
     pub content: String,
+}
+
+pub async fn search_to_text(
+    term: &str,
+    num_results: usize,
+    lang: &str,
+    proxy: Option<&str>,
+    sleep_interval: u64,
+    timeout: u64,
+    safe: &str,
+    ssl_verify: bool,
+    region: Option<&str>,
+    start_num: usize,
+    output_file: &str,
+    width: usize
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(timeout))
+        .danger_accept_invalid_certs(!ssl_verify)
+        .build()?;
+
+    let search_results = search(
+        term,
+        num_results,
+        lang,
+        proxy,
+        sleep_interval,
+        timeout,
+        safe,
+        ssl_verify,
+        region,
+        start_num
+    ).await?;
+
+    let mut file = File::create(output_file)?;
+
+    for (index, result) in search_results.into_iter().enumerate() {
+        writeln!(file, "Result {}", index + 1)?;
+        writeln!(file, "URL: {}", result.url)?;
+        writeln!(file, "Title: {}", result.title)?;
+        writeln!(file, "Description: {}", result.description)?;
+        writeln!(file, "Content:")?;
+
+        let resp = client.get(&result.url).send().await?;
+        let html = resp.text().await?;
+
+        // Convert HTML to rich text using html2text
+        let rich_text: Vec<TaggedLine<Vec<RichAnnotation>>> = from_read_rich(
+            html.as_bytes(),
+            width
+        );
+
+        // Write rich text to file
+        for line in rich_text {
+            // Use the public method `into_string` to get the text
+            let text = line.into_string();
+            writeln!(file, "String: {}", text)?;
+            // Tags are not accessible because `v` is private
+            writeln!(file, "Tags: [Not Accessible]")?;
+        }
+
+        writeln!(file, "---")?;
+
+        tokio::time::sleep(Duration::from_secs(sleep_interval)).await;
+    }
+
+    Ok(())
+}
+/// Removes all content after the "✕" character, if present.
+fn preprocess_markdown(input: &str) -> String {
+    if let Some(index) = input.find('✕') { input[..index].to_string() } else { input.to_string() }
+}
+
+pub fn clean_markdown(input_markdown: &str) -> String {
+    // Parse markdown and segment into blocks
+    let preprocessed_markdown = preprocess_markdown(input_markdown);
+
+    // Parse markdown and segment into blocks
+    let parser = MarkdownParser::new(&preprocessed_markdown);
+    let blocks = parser.parse();
+
+    // Score blocks
+    let scorer = MarkdownScorer::new();
+    let scored_blocks = scorer.score_blocks(&blocks);
+
+    // Determine threshold
+    let threshold = scorer.calculate_threshold(&scored_blocks);
+
+    // Filter blocks
+    let filtered_blocks: Vec<MarkdownBlock> = scored_blocks
+        .into_iter()
+        .filter(|&(_, score)| score >= threshold)
+        .map(|(block, _)| block.clone()) // Clone the block here
+        .collect();
+
+    // Reassemble markdown
+    let reassembler = MarkdownReassembler::new();
+    reassembler.reassemble(&filtered_blocks)
 }

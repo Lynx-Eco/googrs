@@ -29,4 +29,8 @@ serde = { version = "1.0.210", features = ["derive"] }
 tokio = { version = "1.40.0", features = ["full"] }
 readability = "0.3.0"
 readablers = { git = "https://github.com/Lynx-Eco/readablers.git", version = "0.1.0" }
+lol_read = { git = "https://github.com/Lynx-Eco/lol-read.git", version = "0.1.0" }
+html2text = "0.6.0"
+pulldown-cmark = "0.12.1"
+regex = "1.10.6"
 
