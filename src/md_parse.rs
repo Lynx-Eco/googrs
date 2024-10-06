@@ -126,7 +126,7 @@ impl<'a> MarkdownParser<'a> {
                         }
                     }
                 }
-                Event::End(tag) => {
+                Event::End(_tag) => {
                     if let Some(block) = current_block.take() {
                         blocks.push(block);
                     }

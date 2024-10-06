@@ -8,7 +8,9 @@ pub mod reassembler;
 pub mod scorer;
 pub mod user_agents;
 pub mod fetcher;
-
+pub mod images;
+pub mod blocklist;
+use crate::blocklist::SCRAPING_BLOCKLIST;
 use std::time::Duration;
 use serde_urlencoded; // Added to fix the undeclared crate/module error
 use htmd::{ options::Options, HtmlToMarkdown };
@@ -34,21 +36,8 @@ pub struct MarkdownResult {
     pub title: String,
     pub description: String,
     pub content: String,
+    pub md_unclean: String,
 }
-
-/// List of URLs known to block scraping.
-pub static SCRAPING_BLOCKLIST: &[&str] = &[
-    "reddit.com",
-    "facebook.com",
-    "twitter.com",
-    "linkedin.com",
-    "instagram.com",
-    "tiktok.com",
-    "pinterest.com",
-    "quora.com",
-    "glassdoor.com",
-    "yelp.com",
-];
 
 /// Custom error type for the SearchMD library.
 #[derive(Error, Debug)]
@@ -407,10 +396,13 @@ impl SearchMd {
             if is_blocked(&search_result.url) {
                 continue;
             }
-            let markdown = match self.fetcher.fetch(&search_result.url).await {
+            let md_unclean: String;
+
+            let markdown = match self.fetcher.fetch_md(&search_result.url).await {
                 Ok(html) => {
-                    let markdown = self.converter.convert(&html).unwrap();
-                    clean_markdown(&markdown, &self.scorer, &self.reassembler)
+                    md_unclean = html.clone();
+                    // clean_markdown(&html, &self.scorer, &self.reassembler);
+                    html
                 }
                 Err(e) => {
                     eprintln!("Failed to fetch or process {}: {}", search_result.url, e);
@@ -423,6 +415,7 @@ impl SearchMd {
                 title: search_result.title,
                 description: search_result.description,
                 content: markdown,
+                md_unclean,
             });
             tokio::time::sleep(Duration::from_secs(self.config.sleep_interval)).await;
         }

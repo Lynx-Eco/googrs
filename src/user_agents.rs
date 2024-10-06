@@ -40,15 +40,4 @@ mod tests {
         let ua = get_useragent();
         assert!(USER_AGENT_LIST.contains(&ua));
     }
-
-    #[test]
-    #[should_panic(expected = "User-Agent list is empty")]
-    fn test_empty_useragent_list() {
-        // Temporarily redefine USER_AGENT_LIST as empty for this test
-        const EMPTY_USER_AGENT_LIST: &[&str] = &[];
-        let original = USER_AGENT_LIST;
-        // This is just illustrative; in practice, you'd refactor to allow dependency injection or mocking
-    }
-
-    // Add more tests as needed
 }

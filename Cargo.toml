@@ -23,7 +23,7 @@ htmd = "0.1.6"
 markup5ever = "0.14.0"
 rand = "0.8.5"
 readable-readability = "0.4.0"
-reqwest = "0.12.7"
+reqwest = { version = "0.12.7", features = ["cookies"] }
 scraper = "0.20.0"
 serde = { version = "1.0.210", features = ["derive"] }
 tokio = { version = "1.40.0", features = ["full"] }
@@ -35,4 +35,10 @@ pulldown-cmark = "0.12.1"
 regex = "1.10.6"
 thiserror = "1.0.64"
 serde_urlencoded = "0.7.1"
-
+anyhow = "1.0"
+urlencoding = "2.1.0"
+url = "2.5.2"
+image = "0.25.2"
+serde_json = "1.0.128"
+tokio-process = "0.2.5"
+headless_chrome = "1.0.15"
